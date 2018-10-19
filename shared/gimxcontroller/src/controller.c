@@ -393,3 +393,27 @@ e_controller_axis_index controller_get_activation_button(e_controller_type type)
   }
   return 0; // no activation button
 }
+
+struct controller_state * controller_init(e_controller_type type, const int * axes)
+{
+  if (type < C_TYPE_MAX && controllers[type]->fp_init != NULL)
+  {
+    return controllers[type]->fp_init(axes);
+  }
+  return NULL;
+}
+
+void controller_clean(e_controller_type type, struct controller_state * state)
+{
+  if (type < C_TYPE_MAX && controllers[type]->fp_clean != NULL)
+  {
+    controllers[type]->fp_clean(state);
+  }
+}
+const struct controller_interface * controller_get_interface(e_controller_type type) {
+
+    if (type < C_TYPE_MAX) {
+      return controllers[type]->interface;
+    }
+    return NULL;
+}

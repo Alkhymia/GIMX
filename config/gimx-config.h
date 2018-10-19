@@ -311,6 +311,7 @@ class configFrame: public wxFrame
         static const long ID_MENUITEMDFPS2;
         static const long ID_MENUITEMDFPPS2;
         static const long ID_MENUITEMGTFPS2;
+        static const long ID_MENUITEMG920XONE;
         static const long ID_MENUITEM8;
         static const long ID_MENUITEM9;
         static const long ID_MENUITEM10;
@@ -342,6 +343,7 @@ class configFrame: public wxFrame
         wxMenuItem* MenuItemCopyProfile;
         wxStaticText* FFBTweaksName;
         wxMenuItem* MenuProfile7;
+        wxMenuItem* MenuItemG920Xone;
         wxStaticText* IntensityDeviceId;
         wxMenuItem* MenuProfile6;
         wxStatusBar* StatusBar1;

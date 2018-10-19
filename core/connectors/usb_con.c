@@ -189,7 +189,8 @@ static struct
     .name = XONE_NAME,
     .ids =
     {
-        { .vendor = XONE_VENDOR, .product = XONE_PRODUCT }
+        { .vendor = XONE_VENDOR, .product = XONE_PRODUCT },
+//        { .vendor = XONE_VENDOR, .product = XONES_PRODUCT }
     },
     .configuration = 1,
     .endpoints =
@@ -220,7 +221,45 @@ static struct
         .size = XONE_USB_INTERRUPT_PACKET_SIZE
       }
     }
-  }
+  },
+  [C_TYPE_G920_XONE] =
+  {
+    .name = XONE_NAME,
+    .ids =
+    {
+        { .vendor = XONE_VENDOR, .product = XONE_PRODUCT },
+//        { .vendor = XONE_VENDOR, .product = XONES_PRODUCT }
+    },
+    .configuration = 1,
+    .endpoints =
+    {
+      .in =
+      {
+        .address = XONE_USB_INTERRUPT_ENDPOINT_IN | USB_DIR_IN,
+        .size = XONE_USB_INTERRUPT_PACKET_SIZE,
+        .reports =
+        {
+          .nb = 2,
+          .elements =
+          {
+            {
+              .report_id = XONE_USB_HID_IN_REPORT_ID,
+              .report_length = sizeof(((s_report_xone*)NULL)->input)
+            },
+            {
+              .report_id = XONE_USB_HID_IN_GUIDE_REPORT_ID,
+              .report_length = sizeof(((s_report_xone*)NULL)->guide)
+            },
+          }
+        }
+      },
+      .out =
+      {
+        .address = XONE_USB_INTERRUPT_ENDPOINT_OUT | USB_DIR_OUT,
+        .size = XONE_USB_INTERRUPT_PACKET_SIZE
+      }
+    }
+  },
 };
 
 static struct usb_state {
@@ -245,7 +284,7 @@ static void process_report(int usb_number, struct usb_state * state, unsigned ch
     unsigned char report_length = controller[state->type].endpoints.in.reports.elements[i].report_length;
     if (buf[0] == report_id) {
       if (count == report_length) {
-        if (state->type == C_TYPE_XONE_PAD && !adapter_get(usb_number)->status) {
+        if ((state->type == C_TYPE_XONE_PAD || state->type == C_TYPE_G920_XONE) && !adapter_get(usb_number)->status) {
           break;
         }
 
@@ -258,11 +297,16 @@ static void process_report(int usb_number, struct usb_state * state, unsigned ch
           memcpy(&previous->ds4, &current->ds4, report_length); //s_report_ds4 is larger than report_length bytes!
         } else if (state->type == C_TYPE_360_PAD) {
           previous->x360 = current->x360;
-        } else if (state->type == C_TYPE_XONE_PAD) {
+        } else if (state->type == C_TYPE_XONE_PAD || state->type == C_TYPE_G920_XONE) {
           if (report_id == XONE_USB_HID_IN_REPORT_ID) {
             previous->xone.input = current->xone.input;
           } else if (report_id == XONE_USB_HID_IN_GUIDE_REPORT_ID) {
             previous->xone.guide = current->xone.guide;
+            /*if (controller[state->type].endpoints.in.address == (XONES_USB_INTERRUPT_ENDPOINT_IN | USB_DIR_IN)
+                    && buf[1] == 0x30) {
+                unsigned char ack[] = { 0x01, 0x20, buf[2], 0x09, 0x00, 0x07, 0x20, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00 };
+                usb_send_interrupt_out(usb_number, ack, sizeof(ack));
+            }*/
           }
         }
       } else {
@@ -274,7 +318,7 @@ static void process_report(int usb_number, struct usb_state * state, unsigned ch
   }
 
   if (i == controller[state->type].endpoints.in.reports.nb) {
-    if (state->type == C_TYPE_XONE_PAD && !adapter_get(usb_number)->status) {
+    if ((state->type == C_TYPE_XONE_PAD && !adapter_get(usb_number)->status) || state->type == C_TYPE_G920_XONE) {
       if (adapter_forward_interrupt_in(usb_number, buf, count) < 0) {
         gwarn("can't forward interrupt data to the adapter\n");
       }
@@ -393,7 +437,7 @@ static int usb_send_interrupt_out_sync(int usb_number, unsigned char * buf, unsi
 
   struct usb_state * state = usb_states + usb_number;
 
-  if (state->type == C_TYPE_XONE_PAD && count > 2) {
+  if ((state->type == C_TYPE_XONE_PAD || state->type == C_TYPE_G920_XONE) && count > 2) {
     buf[2] = state->counter++;
   }
 
@@ -428,33 +472,18 @@ int usb_init(int usb_number, e_controller_type type) {
     state->usb_device = gusb_open_ids(controller[type].ids[i].vendor, controller[type].ids[i].product);
     if (state->usb_device != NULL) {
       ginfo(_("found pass-through device 0x%04x:0x%04x\n"), controller[type].ids[i].vendor, controller[type].ids[i].product);
+      if (controller[type].ids[i].vendor == XONE_VENDOR
+              && controller[type].ids[i].product == XONES_PRODUCT) {
+          // ugly hack until refactoring
+          controller[type].endpoints.in.address = XONES_USB_INTERRUPT_ENDPOINT_IN | USB_DIR_IN;
+          controller[type].endpoints.out.address = XONES_USB_INTERRUPT_ENDPOINT_OUT | USB_DIR_OUT;
+      }
       break;
     }
   }
 
   if (state->usb_device == NULL) {
     return -1;
-  }
-
-  if(state->type == C_TYPE_XONE_PAD && adapter_get(usb_number)->status) {
-
-    //if the authentication was already performed, activate the controller
-
-    //warning: make sure not to make any async io before this!
-
-    unsigned char activate[] = { 0x05, 0x20, 0x00, 0x01, 0x00 };
-    ret = usb_send_interrupt_out_sync(usb_number, activate, sizeof(activate));
-    if (ret < 0) {
-      usb_close(usb_number);
-      return -1;
-    }
-
-    unsigned char activate_rumble[] = { 0x09, 0x00, 0x00, 0x09, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00 };
-    ret = usb_send_interrupt_out_sync(usb_number, activate_rumble, sizeof(activate_rumble));
-    if (ret < 0) {
-      usb_close(usb_number);
-      return -1;
-    }
   }
 
   GUSB_CALLBACKS callbacks = {
@@ -493,7 +522,7 @@ int usb_close(int usb_number) {
   struct usb_state * state = usb_states + usb_number;
 
   if (state->usb_device != NULL) {
-    if (state->type == C_TYPE_XONE_PAD) {
+    if (state->type == C_TYPE_XONE_PAD || state->type == C_TYPE_G920_XONE) {
       unsigned char power_off[] = { 0x05, 0x20, 0x00, 0x01, 0x04 };
       usb_send_interrupt_out_sync(usb_number, power_off, sizeof(power_off));
     }
@@ -511,7 +540,7 @@ int usb_send_control(int usb_number, void * buf, unsigned int count) {
   return gusb_write(usb_states[usb_number].usb_device, 0x00, buf, count);
 }
 
-int usb_send_interrupt_out(int usb_number, void * buf, unsigned int count) {
+int usb_send_interrupt_out(int usb_number, const void * buf, unsigned int count) {
 
   struct usb_state * state = usb_states + usb_number;
 

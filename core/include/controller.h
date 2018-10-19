@@ -58,10 +58,10 @@ typedef struct {
     unsigned short src_port;
     int src_fd;
     e_controller_type ctype;
-  struct {
-    e_controller_axis_index index;
-    int pressed;
-  } activation_button;
+    struct {
+        e_controller_axis_index index;
+        int pressed;
+    } activation_button;
     int event;
     int axis[AXIS_MAX];
     int change;
@@ -71,6 +71,10 @@ typedef struct {
     int status;
     int joystick;
     unsigned char forward_out_reports;
+    struct {
+        struct controller_state * state;
+        const struct controller_interface * interface;
+    } controller;
     unsigned char process_ffb;
     int haptic_sink_joystick;
     struct haptic_core * ff_core;

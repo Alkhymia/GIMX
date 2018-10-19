@@ -92,9 +92,11 @@ static int haptic_source_rumble_get(struct haptic_source_state * state, s_haptic
 
 static s_haptic_core_ids haptic_source_rumble_ids[] = {
         { .vid = DS4_VENDOR,  .pid = DS4_PRODUCT  },
+        { .vid = DS4_VENDOR,  .pid = DS4_PRODUCT_2 },
         { .vid = X360_VENDOR, .pid = X360_PRODUCT },
         { .vid = DS3_VENDOR,  .pid = DS3_PRODUCT  },
         { .vid = XONE_VENDOR, .pid = XONE_PRODUCT },
+        { .vid = XONE_VENDOR, .pid = XONES_PRODUCT },
         { .vid = 0x2508,      .pid = 0x0001       }, // GPP/Cronus/Titan
         { .vid = 0x0000,      .pid = 0x0000       }, // end of table
 };
