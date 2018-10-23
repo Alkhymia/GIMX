@@ -10,6 +10,8 @@
 #include <string.h>
 #include <unistd.h>
 
+GLOG_INST(GLOG_NAME)
+
 s_controller * controllers[C_TYPE_MAX] = {};
 
 int clamp(int min, int val, int max)

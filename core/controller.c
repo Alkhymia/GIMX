@@ -1104,6 +1104,7 @@ int adapter_send()
                   if (gserial_write(adapter->serial.device, &report, HEADER_SIZE + report.header.length) < 0) {
                       ret = -1;
                   }
+                  DEBUG_PACKET2("IN << ", data, length)
               }
           }
         }

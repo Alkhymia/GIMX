@@ -154,6 +154,7 @@ int args_read(int argc, char *argv[], s_gimx_params* params)
     {"debug.macros",   no_argument, &params->debug.macros,   1},
     {"debug.sixaxis",  no_argument, &params->debug.sixaxis,  1},
     {"debug.config",   no_argument, &params->debug.config,   1},
+    {"debug.gimxcontroller", no_argument, &params->debug.gimxcontroller, 1},
     {"skip_leds",      no_argument, &params->skip_leds,      1},
     {"ff_conv",        no_argument, &params->ff_conv,        1},
     {"auto-grab",      no_argument, &params->autograb,       1},
@@ -465,6 +466,11 @@ int args_read(int argc, char *argv[], s_gimx_params* params)
   if(params->logfile)
   {
     log_info();
+  }
+
+  if (params->debug.gimxcontroller)
+  {
+    glog_set_level("gimxcontroller", E_GLOG_LEVEL_DEBUG);
   }
 
   return ret;

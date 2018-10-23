@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "../include/controller.h"
+#include <gimxcommon/include/gerror.h>
 
 #define G920_VENDOR 0x045e
 #define G920_PRODUCT 0x0261
@@ -52,6 +53,8 @@
 #define G920_GEAR_SHIFTER_R  0xff
 
 #define G920_GUIDE_MASK 0x01
+
+GLOG_GET(GLOG_NAME)
 
 static s_axis axes[AXIS_MAX] = {
 
@@ -139,12 +142,17 @@ static s_report_g920Xone default_report = {
                 .unknown5 = 0x00,
                 .unknown6 = 0xe6,
                 .shifter = 0x00,
-                .unknown7 = 0x84,
-                .unknown8 = 0x03,
-                .unknown9 = 0xff,
-                .unknown10 = 0xf8,
+                .range = 0x0384, // 900
+                .unknown7 = 0xff,
+                .unknown8 = 0xe8,
         }
 };
+
+typedef enum {
+    INPUT_REPORT_INDEX = 0,
+    GUIDE_REPORT_INDEX = 1,
+    MAX_REPORT_INDEX = 2
+} report_index;
 
 static void init_report(s_report * report)
 {
@@ -157,8 +165,8 @@ static unsigned int build_report(const int axis[AXIS_MAX], s_report_packet repor
 
     uint8_t guide_button = axis[g920Xonea_guide] ? G920_GUIDE_MASK : 0x00;
 
-    if(guide_button ^ report[1].value.g920Xone.guide.button) {
-        index = 1;
+    if(guide_button ^ report[GUIDE_REPORT_INDEX].value.g920Xone.guide.button) {
+        index = GUIDE_REPORT_INDEX;
         report[index].length = sizeof(report->value.g920Xone.guide);
         s_report_g920Xone * g920Xone = &report[index].value.g920Xone;
 
@@ -170,7 +178,7 @@ static unsigned int build_report(const int axis[AXIS_MAX], s_report_packet repor
         g920Xone->guide.unknown2 = 0x5b;
     }
     else {
-        index = 0;
+        index = INPUT_REPORT_INDEX;
         report[index].length = sizeof(report->value.g920Xone.input);
         s_report_g920Xone * g920Xone = &report[index].value.g920Xone;
 
@@ -259,6 +267,9 @@ static unsigned int build_report(const int axis[AXIS_MAX], s_report_packet repor
         }
         if (axis[g920Xonea_gearShifterR]) {
             g920Xone->input.shifter |= G920_GEAR_SHIFTER_R;
+        }
+        if (g920Xone->input.shifter == 0x00) {
+            g920Xone->input.shifter = 0xff;
         }
     }
 
@@ -390,6 +401,7 @@ struct controller_state {
     unsigned int step;
     unsigned int substep;
     int sent[sizeof(step1) / sizeof(*step1)];
+    int sendDesc2100;
     struct {
         int send;
         size_t len;
@@ -400,10 +412,11 @@ struct controller_state {
         size_t len;
         uint8_t data[G920_INTERRUPT_PACKET_SIZE];
     } out;
-    s_report_packet reports[2];
+    s_report_packet reports[MAX_REPORT_INDEX];
     int status;
     uint8_t cpt0220;
     const int * axes;
+    int toggle;
 };
 
 static struct controller_state * init_state(const int * axes) {
@@ -411,10 +424,12 @@ static struct controller_state * init_state(const int * axes) {
     struct controller_state * state = calloc(1, sizeof(struct controller_state));
 
     if (state != NULL) {
-        memcpy(&state->reports[0], &default_report, sizeof(default_report));
+        memcpy(&state->reports[INPUT_REPORT_INDEX], &default_report, sizeof(default_report));
     }
 
     state->axes = axes;
+
+    init_report(&state->reports[INPUT_REPORT_INDEX].value);
 
     return state;
 }
@@ -424,54 +439,56 @@ static void clean_state(struct controller_state * state) {
     free(state);
 }
 
-#include <stdio.h> // TODO MLA
+static inline void set_step(struct controller_state * state, int step) {
 
-static inline void next_step(struct controller_state * state) {
-
-    if (state->step == 1 && state->substep != sizeof(step1) / sizeof(*step1) - 1) {
-        return;
-    }
-    ++(state->step);
+    state->step = step;
     state->substep = 0;
-    printf("step=%d\n", state->step); // TODO MLA
+    if (GLOG_LEVEL(GLOG_NAME,DEBUG)) {
+        printf("%s:%d %s: step=%d\n", __FILE__, __LINE__, __func__, state->step);
+    }
 }
 
 static void process_out(struct controller_state * state, const uint8_t * data, size_t len) {
 
-    int send = 1;
+    if ((data[0] == 0x0b || data[0] == 0x0d) && data[1] == 0x00) { // ffb data
+        return;
+    }
 
-    if (data[0] == 0x04 && data[1] == 0x20) {
-        next_step(state);
-        send = 0;
-    } else if ((data[0] == 0x0b || data[0] == 0x0d) && data[1] == 0x00) {
-        send = 0;
-    } else if (state->step == 1) {
-        if (data[0] == 0x01 && data[1] == 0x20) {
+    if (data[0] == 0x0a && data[1] == 0x00) {
+        if (data[4] == 0x01) {
+            state->reports[INPUT_REPORT_INDEX].value.g920Xone.input.range = data[6] << 8 | data[5];
+            return;
+        } else if (data[4] == 0x00) {
+            state->sendDesc2100 = 1;
+            return;
+        }
+    }
+
+    if (state->step == 1) {
+        if (data[0] == 0x01 && data[1] == 0x20) { // ack
             ++state->substep;
         }
-        send = 0;
-    } else if (state->step == 2) {
-        if (data[0] == 0x0a && data[1] == 0x00) {
-            send = 0;
-            next_step(state);
-        }
-        if (data[0] == 0x05 && data[1] == 0x20 && data[3] == 0x01) {
-            state->status = 1;
-        }
-    } else if (state->step == 4) {
-        if (data[0] == 0x06 && data[1] == 0x20) {
-            next_step(state);
-        }
+        return;
     }
 
-    if (send) {
-        if (state->out.send) {
-            fprintf(stderr, "we already have an out report to send!\n"); // TODO MLA
-        }
-        state->out.len = len;
-        memcpy(state->out.data, data, len);
-        state->out.send = 1;
+    if (data[0] == 0x04 && data[1] == 0x20) { // start of step 1
+        set_step(state, 1);
+        return;
     }
+
+    if (data[0] == 0x05 && data[1] == 0x20 && data[3] == 0x01) {
+       state->status = 1;
+       if (data[4] == 0x05) {
+           state->toggle = 1;
+       }
+    }
+
+    if (state->out.send) {
+        PRINT_ERROR_OTHER("overwrite out report")
+    }
+    state->out.len = len;
+    memcpy(state->out.data, data, len);
+    state->out.send = 1;
 }
 
 static const uint8_t * get_out(struct controller_state * state, size_t * len) {
@@ -489,54 +506,65 @@ static const uint8_t * get_out(struct controller_state * state, size_t * len) {
 
 static void process_in(struct controller_state * state, const uint8_t * data, size_t len) {
 
-    int send = 1;
+    state->in.len = len;
+    memcpy(state->in.data, data, len);
 
-    if (state->step == 0) {
-        state->in.len = sizeof(desc0220);
-        memcpy(state->in.data, desc0220, sizeof(desc0220));
-        state->in.data[2] = state->cpt0220;
-        ++state->cpt0220;
-    } else if (state->step == 2 || state->step == 5) {
-        state->in.len = len;
-        memcpy(state->in.data, data, len);
-    } else if (state->step == 4) {
-        state->in.len = sizeof(desc2100);
-        memcpy(state->in.data, desc2100, sizeof(desc2100));
-        next_step(state);
+    if (state->in.send) {
+        PRINT_ERROR_OTHER("overwrite in report")
     }
-
-    if (send) {
-        if (state->in.send) {
-            fprintf(stderr, "we already have an in report to send!\n"); // TODO MLA
-        }
-        state->in.send = 1;
-    }
+    state->in.send = 1;
 }
 
 static const uint8_t * get_in(struct controller_state * state, size_t * len) {
 
     const uint8_t * ret = NULL;
 
-    if (state->step == 1) {
+    if (state->step == 0) {
+        state->in.len = sizeof(desc0220);
+        memcpy(state->in.data, desc0220, sizeof(desc0220));
+        state->in.data[2] = state->cpt0220;
+        state->in.send = 1;
+        ++state->cpt0220;
+    } else if (state->step == 1) {
         if (state->substep < sizeof(step1) / sizeof(*step1) && state->sent[state->substep] == 0) {
             *len = step1[state->substep].length;
             ret = step1[state->substep].data;
             state->sent[state->substep] = 1;
-            next_step(state);
+            if (state->substep == sizeof(step1) / sizeof(*step1) - 1) {
+                set_step(state, 2); // step 2
+            }
         }
-    } else if (state->step == 3) {
-        next_step(state);
     }
 
-    if (state->in.send) {
+    if (ret == NULL && state->sendDesc2100) {
+        *len = sizeof(desc2100);
+        ret = desc2100;
+        state->sendDesc2100 = 0;
+    }
+
+    if (ret == NULL && state->in.send) {
         *len = state->in.len;
         ret = state->in.data;
         state->in.send = 0;
-    } else if (state->status) {
+    }
+
+    if (ret == NULL && state->status) {
         unsigned int index = build_report(state->axes, state->reports);
         s_report_packet * packet = state->reports + index;
         *len = packet->length;
         ret = (uint8_t *)&packet->value;
+        if (index == INPUT_REPORT_INDEX && state->toggle) {
+            if (state->reports[INPUT_REPORT_INDEX].value.g920Xone.input.unknown8 == 0xe8) {
+                state->reports[INPUT_REPORT_INDEX].value.g920Xone.input.unknown6 = 0x06;
+                state->reports[INPUT_REPORT_INDEX].value.g920Xone.input.shifter = 0x00;
+                state->reports[INPUT_REPORT_INDEX].value.g920Xone.input.unknown8 = 0x00;
+            } else {
+                state->reports[INPUT_REPORT_INDEX].value.g920Xone.input.unknown6 = 0xe6;
+                state->reports[INPUT_REPORT_INDEX].value.g920Xone.input.shifter = 0xff;
+                state->reports[INPUT_REPORT_INDEX].value.g920Xone.input.unknown8 = 0xe8;
+                state->toggle = 0;
+            }
+        }
     }
 
     return ret;

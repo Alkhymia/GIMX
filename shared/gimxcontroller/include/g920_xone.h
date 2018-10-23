@@ -51,7 +51,7 @@ typedef struct GIMX_PACKED {
         uint8_t type;
         struct GIMX_PACKED {
             uint8_t type; // 0x20
-            uint8_t unknown1;
+            uint8_t unknown1; // 0x00
             uint8_t counter; // 0x01 to 0xff
             uint8_t size; // 0x11
             uint8_t buttons1;
@@ -64,12 +64,11 @@ typedef struct GIMX_PACKED {
             uint8_t clutch;
             uint8_t unknown4;
             uint8_t unknown5;
-            uint8_t unknown6; // 0xe6, sometimes 0x06 when counter is ff
+            uint8_t unknown6; // 0xe6, 0x06 when enabling/disabling Xbox UI
             uint8_t shifter;
-            uint8_t unknown7; // 0x84
-            uint8_t unknown8; // 0x03
-            uint8_t unknown9; // 0xff
-            uint8_t unknown10; // 0xe8, sometimes 0x00 when counter is ff
+            uint16_t range;
+            uint8_t unknown7; // 0xff
+            uint8_t unknown8; // 0xf8, 0x00 when enabling/disabling Xbox UI
         } input;
         struct GIMX_PACKED {
             uint8_t type; // 0x07

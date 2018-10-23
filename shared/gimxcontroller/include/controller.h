@@ -9,6 +9,7 @@
 #include "defs.h"
 #include "report.h"
 #include "stddef.h"
+#include <gimxlog/include/glog.h>
 
 #define DEFAULT_MAX_AXIS_VALUE MAX_AXIS_VALUE_8BITS
 #define DEFAULT_REFRESH_PERIOD 11250 //=11.25ms
