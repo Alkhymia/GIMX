@@ -597,7 +597,7 @@ static s_controller controller =
   .interface = &interface
 };
 
-void g920Xone_init(void) __attribute__((constructor (101)));
+void g920Xone_init(void) __attribute__((constructor));
 void g920Xone_init(void)
 {
   controller_register(C_TYPE_G920_XONE, &controller);
