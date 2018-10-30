@@ -464,15 +464,15 @@ static void process_out(struct controller_state * state, const uint8_t * data, s
         }
     }
 
+    if (data[0] == 0x04 && data[1] == 0x20) { // start of step 1
+        set_step(state, 1);
+        return;
+    }
+
     if (state->step == 1) {
         if (data[0] == 0x01 && data[1] == 0x20) { // ack
             ++state->substep;
         }
-        return;
-    }
-
-    if (data[0] == 0x04 && data[1] == 0x20) { // start of step 1
-        set_step(state, 1);
         return;
     }
 
@@ -505,6 +505,10 @@ static const uint8_t * get_out(struct controller_state * state, size_t * len) {
 }
 
 static void process_in(struct controller_state * state, const uint8_t * data, size_t len) {
+
+    if (data[0] == 0x02 && data[1] == 0x20) {
+        return;
+    }
 
     state->in.len = len;
     memcpy(state->in.data, data, len);

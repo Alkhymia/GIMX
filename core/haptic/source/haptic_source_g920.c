@@ -47,32 +47,53 @@ static void clean(struct haptic_source_state * state) {
     free(state);
 }
 
+static void dump2(const unsigned char * packet, unsigned char length)
+{
+  int i;
+  for (i = 0; i < length; ++i)
+  {
+    if (i > 0) {
+      ginfo(":");
+    }
+    ginfo("%02x", packet[i]);
+  }
+  ginfo("\n");
+}
+
+#define DEBUG_PACKET2(STR, DATA, LENGTH) \
+  if(gimx_params.debug.haptic) \
+  { \
+    ginfo("%s", STR); \
+    dump2(DATA, LENGTH); \
+  }
+
 static void process(struct haptic_source_state * state, size_t size, const unsigned char * data) {
 
     const unsigned char * ptr = data + state->cmd_offset;
 
-    if(gimx_params.debug.haptic) {
+    if(ptr[4] == 0x02) {
+        DEBUG_PACKET2("> ", data, size)
+    }
 
-        if (ptr[0] == 0x0a && ptr[1] == 0x00 && ptr[4] == 0x01) {
-            int16_t value = ptr[6] << 8 | ptr[5];
-            if (value != state->range.value) {
-                state->range.value = value;
-                state->range.updated = 1;
-                dprintf("> range: %hu\n", value);
-            }
-        } else if (ptr[0] == 0x0b && ptr[1] == 0x00) {
-            ptr += 6;
-            while (ptr + 6 < data + size) {
-                if (ptr[1] == 0x01) {
-                    int16_t level = (ptr[5] & 0x80 ? 1 : -1) * ptr[4];
-                    if (level != state->constant.level) {
-                        state->constant.level = level;
-                        state->constant.updated = 1;
-                        dprintf("> constant: %d\n", state->constant.level);
-                    }
+    if (ptr[0] == 0x0a && ptr[1] == 0x00 && ptr[4] == 0x01) {
+        int16_t value = ptr[6] << 8 | ptr[5];
+        if (value != state->range.value) {
+            state->range.value = value;
+            state->range.updated = 1;
+            dprintf("> range: %hu\n", value);
+        }
+    } else if (ptr[0] == 0x0b && ptr[1] == 0x00) {
+        ptr += 6;
+        while (ptr + 6 < data + size) {
+            if (ptr[1] == 0x01) {
+                int16_t level = (ptr[5] & 0x80 ? 1 : -1) * ptr[4];
+                if (level != state->constant.level) {
+                    state->constant.level = level;
+                    state->constant.updated = 1;
+                    dprintf("> constant: %d\n", state->constant.level);
                 }
-                ptr += 6;
             }
+            ptr += 6;
         }
     }
 
